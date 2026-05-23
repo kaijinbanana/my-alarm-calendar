@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>シフトカレンダー</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      --bg-color: #f4f6f9;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --border-color: #e2e8f0;
+      --primary-color: #4f46e5;
+      --color-day: #fef3c7;
+      --color-night: #e0e7ff;
+      --color-off: #ecfdf5;
+      --color-paid: #dbeafe;
+      --color-special: #f3e8ff;
+      --color-workoff: #ffe4e6;
+      --color-holiday: #ffedd5;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      padding: 12px;
+      line-height: 1.5;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      background: #1e293b;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+    }
+    .btn-settings-toggle { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: white; line-height: 1; }
+    .container { max-width: 800px; margin: 0 auto; }
+    .card { background: var(--card-bg); border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    h3 { margin-bottom: 12px; font-size: 1.1rem; border-bottom: 2px solid var(--border-color); padding-bottom: 4px; }
+    label { display: block; margin-top: 10px; font-size: 0.85rem; color: #666; font-weight: bold; }
+    select, input[type="date"], input[type="time"], input[type="text"] {
+      width: 100%; padding: 10px; margin-top: 4px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.95rem;
+    }
+    .alarm-setting-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; background: #f8fafc; padding: 8px; border-radius: 6px; }
+
+    /* モーダル共通スタイル */
+    .settings-modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: flex-start; padding: 20px 10px; overflow-y: auto;
+    }
+    .settings-modal.active { display: flex; }
+    .modal-content {
+      background: white; width: 100%; max-width: 450px; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideUp 0.2s ease-out;
+    }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; }
+    .btn-close-modal { background: #f1f5f9; border: none; font-size: 1rem; font-weight: bold; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: #64748b; }
+
+    /* サイクル編集 */
+    .cycle-list { max-height: 120px; overflow-y: auto; margin-bottom: 12px; border: 1px solid var(--border-color); border-radius: 6px; padding: 4px; }
+    .cycle-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; margin-bottom: 4px; border-radius: 4px; font-size: 0.9rem; }
+    .cycle-item.日勤 { background-color: var(--color-day); }
+    .cycle-item.夜勤 { background-color: var(--color-night); }
+    .cycle-item.休み { background-color: var(--color-off); }
+    .btn-del { background: none; border: none; color: #ef4444; cursor: pointer; font-weight: bold; font-size: 1.1rem; }
+    .cycle-btns { display: flex; gap: 8px; }
+    .cycle-btns button { flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; font-size: 0.85rem; }
+    .btn-add-day { background-color: #d97706; }
+    .btn-add-night { background-color: #2563eb; }
+    .btn-add-off { background-color: #059669; }
+
+    /* カレンダー */
+    .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .cal-header button { padding: 8px 14px; border: 1px solid var(--border-color); background: white; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+    .weekday { font-weight: bold; font-size: 0.85rem; padding: 4px 0; color: #666; }
+    .weekday:nth-child(1) { color: #ef4444; }
+    .weekday:nth-child(7) { color: #2563eb; }
+    .day-cell {
+      border: 1px solid var(--border-color); border-radius: 6px; min-height: 75px; padding: 4px; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: transform 0.1s; position: relative;
+    }
+    .day-cell:active { transform: scale(0.95); }
+    .day-cell.other-month { opacity: 0.3; cursor: default; pointer-events: none; }
+    .day-num { font-size: 0.85rem; font-weight: bold; text-align: left; }
+    .day-cell:nth-child(7) .day-num { color: #2563eb; }
+    .day-cell:nth-child(1) .day-num { color: #ef4444; }
+    .day-shift { font-size: 0.75rem; font-weight: bold; text-align: center; margin-top: 2px;}
+    .day-schedule { font-size: 0.7rem; color: #1e293b; background: rgba(255,255,255,0.7); border-radius: 3px; padding: 1px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; margin-top: auto;}
+
+    /* シフト別配色 */
+    .shift-日勤 { background-color: var(--color-day); }
+    .shift-夜勤 { background-color: var(--color-night); }
+    .shift-休み { background-color: var(--color-off); }
+    .shift-有給 { background-color: var(--color-paid); border: 1px solid #2563eb; }
+    .shift-特休 { background-color: var(--color-special); border: 1px solid #7c3aed; }
+    .shift-休出 { background-color: var(--color-workoff); border: 1px solid #ef4444; }
+    .shift-連休 { background-color: var(--color-holiday); border: 1px solid #ea580c; }
+
+    /* パレット */
+    .palette { margin-top: 16px; padding-top: 12px; border-top: 2px dashed var(--border-color); }
+    .palette-title { font-size: 0.85rem; font-weight: bold; color: #666; margin-bottom: 8px; }
+    .palette-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+    .palette-btn { padding: 8px 12px; border: 2px solid var(--border-color); border-radius: 20px; font-size: 0.8rem; font-weight: bold; cursor: pointer; background: white; }
+    .palette-btn.active { border-color: #1e293b; background: #1e293b; color: white; }
+    .btn-reset-all { padding: 8px 14px; border: 2px solid #ef4444; border-radius: 20px; font-size: 0.8rem; font-weight: bold; cursor: pointer; background: #fef2f2; color: #ef4444; margin-top: 12px; width: 100%; text-align: center; }
+
+    /* 🚨 爆音アラーム画面のスタイル */
+    .alarm-overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: #ef4444; color: white; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px;
+      animation: flash 0.5s alternate infinite;
+    }
+    @keyframes flash { from { background: #ef4444; } to { background: #b91c1c; } }
+    .alarm-overlay.active { display: flex; }
+    .btn-alarm-stop { background: white; color: #ef4444; border: none; padding: 20px 40px; font-size: 2rem; font-weight: bold; border-radius: 50px; cursor: pointer; margin-top: 40px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); width: 80%; max-width: 300px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>シフトカレンダー ⏰</h2>
+    <button class="btn-settings-toggle" onclick="toggleModal('settings-modal', true)">⚙️</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="cal-header">
+        <button onclick="changeMonth(-1)">&lt; 前月</button>
+        <h2 id="cal-title">2026年 5月</h2>
+        <button onclick="changeMonth(1)">翌月 &gt;</button>
+      </div>
+
+      <div class="cal-grid" id="cal-grid"></div>
+
+      <div class="palette">
+        <div class="palette-title">👇 ボタンを選んで日付をタップするとスタンプ補正。<b>「選択解除」</b>の時にタップすると予定を記入できます。</div>
+        <div class="palette-btns">
+          <button class="palette-btn active" data-type="none">選択解除 (予定入力モード)</button>
+          <button class="palette-btn" data-type="連休" style="background: var(--color-holiday)">🍊 連休</button>
+          <button class="palette-btn" data-type="有給" style="background: var(--color-paid)">🔷 有給</button>
+          <button class="palette-btn" data-type="特休" style="background: var(--color-special)">🔮 特休</button>
+          <button class="palette-btn" data-type="休出" style="background: var(--color-workoff)">🛑 休出</button>
+          <button class="palette-btn" data-type="日勤" style="background: var(--color-day)">⚠️ 日勤固定</button>
+          <button class="palette-btn" data-type="夜勤" style="background: var(--color-night)">🌙 夜勤固定</button>
+          <button class="palette-btn" data-type="休み" style="background: var(--color-off)">🍀 休み固定</button>
+          <button class="palette-btn" data-type="shift_switch" style="border: 2px solid #4f46e5; color: #4f46e5;">🔄 シフト交代</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-modal" id="settings-modal" onclick="closeModalOutside(event, 'settings-modal')">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>アプリ設定</h2>
+        <button class="btn-close-modal" onclick="toggleModal('settings-modal', false)">閉じる</button>
+      </div>
+
+      <h3>⏰ 勤務別自動アラーム設定</h3>
+      <div class="alarm-setting-row">
+        <span>⚠️ 日勤のアラーム</span>
+        <input type="time" id="alarm-time-day" style="width:120px; margin:0;" onchange="saveAlarms()">
+      </div>
+      <div class="alarm-setting-row">
+        <span>🌙 夜勤のアラーム</span>
+        <input type="time" id="alarm-time-night" style="width:120px; margin:0;" onchange="saveAlarms()">
+      </div>
+      <p style="font-size:0.75rem; color:#666; margin-top:4px;">※時間を空欄にするとアラームは鳴りません。</p>
+      <br>
+
+      <h3>1. 基本設定</h3>
+      <label>プリセット</label>
+      <select id="preset-select">
+        <option value="custom">-- カスタム --</option>
+        <option value="2shift_week">2交替週換算</option>
+        <option value="3kin3kyu">3勤3休</option>
+        <option value="4kin2kyu">4勤2休</option>
+      </select>
+
+      <label>シフトの起点日</label>
+      <input type="date" id="start-date" value="2026-05-18">
+
+      <div style="margin-top: 20px;">
+        <h3>2. サイクル編集</h3>
+        <div class="cycle-list" id="cycle-list"></div>
+        <div class="cycle-btns">
+          <button class="btn-add-day" onclick="addCycleItem('日勤')">＋ 日勤</button>
+          <button class="btn-add-night" onclick="addCycleItem('夜勤')">＋ 夜勤</button>
+          <button class="btn-add-off" onclick="addCycleItem('休み')">＋ 休み</button>
+        </div>
+      </div>
+      <button class="btn-reset-all" onclick="resetAllSettings()">🧹 全設定リセット</button>
+    </div>
+  </div>
+
+  <div class="settings-modal" id="schedule-modal" onclick="closeModalOutside(event, 'schedule-modal')">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="schedule-modal-title">予定の入力</h2>
+        <button class="btn-close-modal" onclick="toggleModal('schedule-modal', false)">閉じる</button>
+      </div>
+      <input type="hidden" id="target-date">
+      
+      <label>予定のタイトル</label>
+      <input type="text" id="schedule-text" placeholder="例：美容院、ミーティング">
+
+      <label>⏰ この予定専用のアラーム時間</label>
+      <input type="time" id="schedule-alarm">
+      <p style="font-size:0.75rem; color:#666; margin-top:4px;">※時間を空欄にすると通知のみになります。</p>
+
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button onclick="saveSchedule()" style="flex:1; background:#4f46e5; color:white; padding:12px; border:none; border-radius:6px; font-weight:bold;">保存する</button>
+        <button onclick="deleteSchedule()" style="background:#ef4444; color:white; padding:12px; border:none; border-radius:6px; font-weight:bold;">削除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="alarm-overlay" id="alarm-overlay">
+    <h1 style="font-size:3rem; margin-bottom:10px;">⏰ 時間です！</h1>
+    <h2 id="alarm-msg" style="font-size:1.5rem;">日勤のアラーム時間です</h2>
+    <button class="btn-alarm-stop" onclick="stopAlarm()">STOP</button>
+  </div>
+
+  <script>
+    // --- 状態管理 ---
+    let cycle = ['日勤','日勤','日勤','日勤','日勤','休み','休み','夜勤','夜勤','夜勤','夜勤','夜勤','休み','休み']; 
+    let overrides = {}; 
+    let shiftSwitches = []; 
+    let schedules = {}; 
+    let shiftAlarms = { '日勤': '', '夜勤': '' };
+    let currentDate = new Date(); 
+    let selectedPaletteType = 'none'; 
+    
+    // アラーム音用のウェブオーディオ（ブラウザ共通でエラーなく鳴らせるブザー音）
+    let audioCtx = null;
+    let alarmIntervalId = null;
+    let lastCheckedMinute = "";
+
+    const presets = {
+      '2shift_week': ['日勤','日勤','日勤','日勤','日勤','休み','休み','夜勤','夜勤','夜勤','夜勤','夜勤','休み','休み'],
+      '3kin3kyu': ['日勤','日勤','日勤','休み','休み','休み'],
+      '4kin2kyu': ['日勤','日勤','日勤','日勤','休み','休み']
+    };
+
+    function toggleModal(id, show) {
+      const modal = document.getElementById(id);
+      if (show) modal.classList.add('active');
+      else modal.classList.remove('active');
+    }
+    function closeModalOutside(e, id) { if (e.target.id === id) toggleModal(id, false); }
+
+    // --- ローカルストレージ読み込み ---
+    function loadSettings() {
+      if (localStorage.getItem('shift_cycle')) cycle = JSON.parse(localStorage.getItem('shift_cycle'));
+      document.getElementById('start-date').value = localStorage.getItem('shift_start_date') || "2026-05-18";
+      if (localStorage.getItem('shift_overrides')) overrides = JSON.parse(localStorage.getItem('shift_overrides'));
+      if (localStorage.getItem('shift_switches')) shiftSwitches = JSON.parse(localStorage.getItem('shift_switches'));
+      document.getElementById('preset-select').value = localStorage.getItem('shift_preset') || "2shift_week";
+      if (localStorage.getItem('shift_schedules')) schedules = JSON.parse(localStorage.getItem('shift_schedules'));
+      if (localStorage.getItem('shift_alarms')) {
+        shiftAlarms = JSON.parse(localStorage.getItem('shift_alarms'));
+        document.getElementById('alarm-time-day').value = shiftAlarms['日勤'] || '';
+        document.getElementById('alarm-time-night').value = shiftAlarms['夜勤'] || '';
+      }
+    }
+
+    function saveAlarms() {
+      shiftAlarms['日勤'] = document.getElementById('alarm-time-day').value;
+      shiftAlarms['夜勤'] = document.getElementById('alarm-time-night').value;
+      localStorage.setItem('shift_alarms', JSON.stringify(shiftAlarms));
+    }
+
+    function resetAllSettings() {
+      if (confirm("スケジュールやアラーム、シフト設定をすべて消去しますか？")) {
+        localStorage.clear();
+        location.reload();
+      }
+    }
+
+    // --- サイクル編集 ---
+    function saveCycle() { localStorage.setItem('shift_cycle', JSON.stringify(cycle)); }
+    function renderCycleList() {
+      const container = document.getElementById('cycle-list');
+      container.innerHTML = '';
+      cycle.forEach((type, index) => {
+        const item = document.createElement('div');
+        item.className = `cycle-item ${type}`;
+        item.innerHTML = `<span>${index + 1}日目: <strong>${type}</strong></span><button class="btn-del" onclick="deleteCycleItem(${index})">✕</button>`;
+        container.appendChild(item);
+      });
+    }
+    function addCycleItem(type) {
+      document.getElementById('preset-select').value = 'custom';
+      localStorage.setItem('shift_preset', 'custom');
+      cycle.push(type); saveCycle(); renderCycleList(); renderCalendar();
+    }
+    function deleteCycleItem(index) {
+      document.getElementById('preset-select').value = 'custom';
+      localStorage.setItem('shift_preset', 'custom');
+      cycle.splice(index, 1); saveCycle(); renderCycleList(); renderCalendar();
+    }
+
+    // --- スケジュール処理 ---
+    function openScheduleModal(dateStr) {
+      document.getElementById('target-date').value = dateStr;
+      document.getElementById('schedule-modal-title').innerText = `${dateStr} の予定`;
+      const data = schedules[dateStr] || { text: '', alarm: '' };
+      document.getElementById('schedule-text').value = data.text;
+      document.getElementById('schedule-alarm').value = data.alarm;
+      toggleModal('schedule-modal', true);
+    }
+    function saveSchedule() {
+      const dateStr = document.getElementById('target-date').value;
+      const text = document.getElementById('schedule-text').value.trim();
+      const alarm = document.getElementById('schedule-alarm').value;
+      if (text === '') { delete schedules[dateStr]; } 
+      else { schedules[dateStr] = { text, alarm }; }
+      localStorage.setItem('shift_schedules', JSON.stringify(schedules));
+      toggleModal('schedule-modal', false);
+      renderCalendar();
+    }
+    function deleteSchedule() {
+      const dateStr = document.getElementById('target-date').value;
+      delete schedules[dateStr];
+      localStorage.setItem('shift_schedules', JSON.stringify(schedules));
+      toggleModal('schedule-modal', false);
+      renderCalendar();
+    }
+
+    // --- カレンダー描画 ---
+    function changeMonth(offset) { currentDate.setMonth(currentDate.getMonth() + offset); renderCalendar(); }
+    
+    function getShiftForDate(dateObj, dateStr) {
+      if (overrides[dateStr]) return overrides[dateStr];
+      const startDateInput = new Date(document.getElementById('start-date').value);
+      if (isNaN(startDateInput.getTime())) return '';
+      const diffTime = dateObj - startDateInput;
+      let diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays >= 0 && cycle.length > 0) {
+        let switchCount = 0;
+        shiftSwitches.forEach(swDate => { if (dateStr >= swDate) switchCount++; });
+        diffDays += (switchCount * 7);
+        const cycleIndex = ((diffDays % cycle.length) + cycle.length) % cycle.length;
+        return cycle[cycleIndex];
+      }
+      return '';
+    }
+
+    function handleDayClick(dateStr, dateObj) {
+      if (selectedPaletteType === 'none') {
+        openScheduleModal(dateStr);
+        return;
+      }
+      if (selectedPaletteType === 'shift_switch') {
+        const idx = shiftSwitches.indexOf(dateStr);
+        if (idx > -1) shiftSwitches.splice(idx, 1);
+        else { shiftSwitches.push(dateStr); shiftSwitches.sort(); }
+        localStorage.setItem('shift_switches', JSON.stringify(shiftSwitches));
+        renderCalendar();
+        return;
+      }
+      if (overrides[dateStr] === selectedPaletteType) delete overrides[dateStr];
+      else overrides[dateStr] = selectedPaletteType;
+      localStorage.setItem('shift_overrides', JSON.stringify(overrides));
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const year = currentDate.getFullYear(); const month = currentDate.getMonth();
+      document.getElementById('cal-title').innerText = `${year}年 ${month + 1}月`;
+      const grid = document.getElementById('cal-grid'); grid.innerHTML = '';
+      
+      ['日', '月', '火', '水', '木', '金', '土'].forEach(w => {
+        const d = document.createElement('div'); d.className = 'weekday'; d.innerText = w; grid.appendChild(d);
+      });
+
+      const firstDay = new Date(year, month, 1); const lastDay = new Date(year, month + 1, 0);
+      const startCount = firstDay.getDay(); const prevMonthLast = new Date(year, month, 0).getDate();
+
+      for (let i = startCount - 1; i >= 0; i--) {
+        const cell = document.createElement('div'); cell.className = 'day-cell other-month';
+        cell.innerHTML = `<span class="day-num">${prevMonthLast - i}</span>`; grid.appendChild(cell);
+      }
+
+      for (let d = 1; d <= lastDay.getDate(); d++) {
+        const thisDate = new Date(year, month, d);
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const cell = document.createElement('div'); cell.className = 'day-cell';
+        cell.onclick = () => handleDayClick(dateStr, thisDate);
+
+        const shiftText = getShiftForDate(thisDate, dateStr);
+        if (shiftText) cell.classList.add(`shift-${shiftText}`);
+        if (shiftSwitches.includes(dateStr)) cell.style.border = "2px dashed #4f46e5";
+
+        let schHtml = '';
+        if (schedules[dateStr]) {
+          schHtml = `<div class="day-schedule">📌 ${schedules[dateStr].text}</div>`;
+        }
+
+        cell.innerHTML = `
+          <span class="day-num">${d} ${shiftSwitches.includes(dateStr) ? '🔄' : ''}</span>
+          <span class="day-shift">${shiftText}</span>
+          ${schHtml}
+        `;
+        grid.appendChild(cell);
+      }
+    }
+
+    // --- アラームエンジン機能（毎秒チェック） ---
+    function startBuzzer() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      alarmIntervalId = setInterval(() => {
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.value = 880; // 高いピピピ音
+        gain.gain.setValueAtTime(1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+      }, 300);
+    }
+
+    function checkAlarms() {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+      const currentDay = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${currentYear}-${currentMonth}-${currentDay}`;
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      if (lastCheckedMinute === timeStr) return; // 同じ分には1回だけ判定
+
+      // 1. 個別スケジュールのチェック
+      if (schedules[todayStr] && schedules[todayStr].alarm === timeStr) {
+        lastCheckedMinute = timeStr;
+        triggerAlarm(`予定: ${schedules[todayStr].text}`);
+        return;
+      }
+
+      // 2. 勤務形態別アラームのチェック
+      const todayShift = getShiftForDate(now, todayStr);
+      if (todayShift && shiftAlarms[todayShift] === timeStr) {
+        lastCheckedMinute = timeStr;
+        triggerAlarm(`${todayShift} の時間です`);
+      }
+    }
+
+    function triggerAlarm(msg) {
+      document.getElementById('alarm-msg').innerText = msg;
+      document.getElementById('alarm-overlay').classList.add('active');
+      startBuzzer();
+    }
+
+    function stopAlarm() {
+      document.getElementById('alarm-overlay').classList.remove('active');
+      if (alarmIntervalId) { clearInterval(alarmIntervalId); alarmIntervalId = null; }
+    }
+
+    // 初回イベント紐付け・ループ起動
+    document.getElementById('start-date').addEventListener('change', (e) => { localStorage.setItem('shift_start_date', e.target.value); renderCalendar(); });
+    document.getElementById('preset-select').addEventListener('change', (e) => {
+      const p = e.target.value; localStorage.setItem('shift_preset', p);
+      if (p !== 'custom' && presets[p]) { cycle = [...presets[p]]; saveCycle(); renderCycleList(); renderCalendar(); }
+    });
+    document.querySelectorAll('.palette-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active'); selectedPaletteType = btn.getAttribute('data-type');
+      });
+    });
+
+    loadSettings(); renderCycleList(); renderCalendar();
+    setInterval(checkAlarms, 1000); // 1秒ごとに時計を監視
+  </script>
+</body>
+</html>
